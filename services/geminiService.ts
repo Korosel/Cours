@@ -2,11 +2,19 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { GeneratedFlashcard } from '../types';
 
-if (!process.env.API_KEY) {
-    throw new Error("API_KEY environment variable not set");
-}
+// The GoogleGenAI instance will be created on demand to avoid crashing on load.
+let ai: GoogleGenAI | null = null;
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const getAi = () => {
+    if (!ai) {
+        if (!process.env.API_KEY) {
+            // This error will now be caught by the UI and displayed to the user.
+            throw new Error("La variable d'environnement API_KEY n'est pas configurée. Impossible d'utiliser les fonctionnalités d'IA.");
+        }
+        ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    }
+    return ai;
+};
 
 const flashcardSchema = {
     type: Type.ARRAY,
@@ -27,6 +35,8 @@ const flashcardSchema = {
 };
 
 export async function generateFlashcards(topic: string, image?: { mimeType: string; data: string }): Promise<GeneratedFlashcard[]> {
+    const aiInstance = getAi(); // Initialize and check for the key only when needed.
+
     const model = 'gemini-2.5-pro';
 
     const systemInstruction = `Tu es un expert en création de flashcards pédagogiques efficaces. 
@@ -41,7 +51,7 @@ export async function generateFlashcards(topic: string, image?: { mimeType: stri
     const parts = imagePart ? [textPart, imagePart] : [textPart];
 
     try {
-        const response = await ai.models.generateContent({
+        const response = await aiInstance.models.generateContent({
             model: model,
             contents: { parts: parts },
             config: {
@@ -59,6 +69,9 @@ export async function generateFlashcards(topic: string, image?: { mimeType: stri
 
     } catch (error) {
         console.error("Error generating flashcards with Gemini:", error);
+        if (error instanceof Error && error.message.includes("API_KEY")) {
+             throw new Error("La clé API pour le service d'IA n'est pas configurée. Veuillez contacter le développeur.");
+        }
         throw new Error("Impossible de générer les flashcards. Le modèle a peut-être renvoyé une réponse inattendue.");
     }
 }

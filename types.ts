@@ -1,5 +1,3 @@
-import { Timestamp } from "firebase/firestore";
-
 // Represents a single flashcard within a deck
 export interface Flashcard {
   question: string;
@@ -25,7 +23,19 @@ export interface Deck {
   userId: string;
   topic: string;
   cards: Flashcard[];
-  createdAt: Timestamp;
+  createdAt: any; // Can be Timestamp or ServerTimestamp
+  folderId: string | null;
+  isFavorite: boolean;
+}
+
+// Represents a folder to organize decks
+export interface Folder {
+    id: string;
+    userId: string;
+    name: string;
+    parentId: string | null;
+    createdAt: any; // Can be Timestamp or ServerTimestamp
+    isFavorite: boolean;
 }
 
 export enum AppState {

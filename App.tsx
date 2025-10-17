@@ -1,103 +1,96 @@
 import React, { useState, useEffect } from 'react';
-import { onAuthStateChanged, User } from 'firebase/auth';
+import { User, onAuthStateChanged } from 'firebase/auth';
 import { auth } from './firebase';
 import { AppState, Deck } from './types';
+import { signOutUser } from './services/authService';
 
 import AuthView from './components/AuthView';
 import DecksView from './components/DecksView';
 import SetupView from './components/SetupView';
 import StudyView from './components/StudyView';
 import { AppHeader } from './components/AppHeader';
-import { signOutUser } from './services/authService';
 
-const App: React.FC = () => {
+function App() {
   const [appState, setAppState] = useState<AppState>(AppState.LOADING);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [activeDeck, setActiveDeck] = useState<Deck | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [currentDeck, setCurrentDeck] = useState<Deck | null>(null);
+  const [currentFolderIdForNewDeck, setCurrentFolderIdForNewDeck] = useState<string | null>(null);
   const [isGuest, setIsGuest] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setCurrentUser(user);
-        setIsGuest(false);
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      if (currentUser) {
         setAppState(AppState.DECKS);
-      } else {
-        setCurrentUser(null);
-        setIsGuest(false); // Reset guest state on logout
+        setIsGuest(false);
+      } else if (!isGuest) {
         setAppState(AppState.AUTH);
       }
     });
     return () => unsubscribe();
-  }, []);
+  }, [isGuest]);
   
   const handleGuestLogin = () => {
     setIsGuest(true);
-    setCurrentUser(null);
-    setAppState(AppState.SETUP);
+    setUser(null);
+    setAppState(AppState.DECKS);
   };
 
   const handleSignOut = async () => {
-    await signOutUser();
-    // onAuthStateChanged will handle the state change
-  };
-
-  const handleStartStudying = (deck: Deck) => {
-    setActiveDeck(deck);
-    setAppState(AppState.STUDYING);
-  };
-
-  const handleGoToSetup = () => {
-    setActiveDeck(null);
-    setAppState(AppState.SETUP);
-  };
-
-  const handleDeckSaved = (deck: Deck) => {
-    setActiveDeck(deck);
-    setAppState(AppState.STUDYING);
-  };
-  
-  const handleFinishStudySession = () => {
-    setActiveDeck(null);
-    if (isGuest) {
-      setAppState(AppState.SETUP);
-    } else {
-      setAppState(AppState.DECKS);
+    try {
+      await signOutUser();
+      setIsGuest(false);
+      setAppState(AppState.AUTH);
+    } catch (error) {
+      console.error("Error signing out:", error);
     }
   };
 
+  const startSetup = (folderId: string | null) => {
+    setCurrentFolderIdForNewDeck(folderId);
+    setAppState(AppState.SETUP);
+  };
+  const finishSetup = () => setAppState(AppState.DECKS);
+  
+  const startStudy = (deck: Deck) => {
+    setCurrentDeck(deck);
+    setAppState(AppState.STUDYING);
+  };
+
+  const finishStudy = () => {
+    setCurrentDeck(null);
+    setAppState(AppState.DECKS);
+  };
 
   const renderContent = () => {
     switch (appState) {
       case AppState.LOADING:
-        return <div className="text-center"><p>Chargement...</p></div>;
+        return <div className="text-center">Chargement...</div>;
       case AppState.AUTH:
         return <AuthView onGuestLogin={handleGuestLogin} />;
       case AppState.DECKS:
-        return <DecksView onSelectDeck={handleStartStudying} onNewDeck={handleGoToSetup} />;
+        return <DecksView onStartSetup={startSetup} onStartStudy={startStudy} isGuest={isGuest} />;
       case AppState.SETUP:
-        return <SetupView onDeckSaved={handleDeckSaved} onBack={handleFinishStudySession} isGuest={isGuest} />;
+        return <SetupView onFinish={finishSetup} isGuest={isGuest} folderId={currentFolderIdForNewDeck} />;
       case AppState.STUDYING:
-        if (!activeDeck) {
-            handleFinishStudySession();
-            return null;
+        if (currentDeck) {
+          return <StudyView deck={currentDeck} onFinish={finishStudy} />;
         }
-        return <StudyView deck={activeDeck} onFinish={handleFinishStudySession} />;
+        setAppState(AppState.DECKS); 
+        return null;
       default:
         return <AuthView onGuestLogin={handleGuestLogin} />;
     }
   };
 
-  const showHeader = appState !== AppState.AUTH && appState !== AppState.LOADING && currentUser;
-
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col items-center p-4">
-      {showHeader && <AppHeader user={currentUser} onSignOut={handleSignOut} />}
-      <main className="w-full max-w-3xl mx-auto flex-grow flex flex-col justify-center">
-        {renderContent()}
-      </main>
+    <div className="bg-slate-900 text-white min-h-screen flex flex-col items-center p-4 sm:p-6 md:p-8 font-sans">
+        {user && <AppHeader user={user} onSignOut={handleSignOut} />}
+        <main className="w-full max-w-3xl flex-grow flex flex-col items-center justify-center">
+            {renderContent()}
+        </main>
     </div>
   );
-};
+}
 
 export default App;
